@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"syj_require_list\" -Force)",
+      "Bash(Move-Item -Destination \".\" -Force)",
+      "Bash(npm install @tauri-apps/plugin-sql)",
+      "Bash(npm run tauri dev)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :1420)",
+      "Bash(findstr:*)"
+    ]
+  }
+}
