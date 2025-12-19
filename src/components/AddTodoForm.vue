@@ -8,50 +8,59 @@ import { readFile } from '@tauri-apps/plugin-fs';
 const todoStore = useTodoStore();
 const inputValue = ref('');
 const isSubmitting = ref(false);
-const selectedImage = ref<string | null>(null);
-const selectedImagePath = ref<string | null>(null);
+const selectedImages = ref<Array<{ path: string; preview: string }>>([]);
 const isDragging = ref(false);
 
-// 选择图片
+// 选择图片（支持多选）
 const selectImage = async () => {
   try {
-    const file = await open({
-      multiple: false,
+    const files = await open({
+      multiple: true,  // 改为 true
       filters: [{
         name: 'Image',
         extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp']
       }]
     });
 
-    if (file) {
-      // 读取文件内容
-      const fileContent = await readFile(file.path);
+    if (files) {
+      const fileArray = Array.isArray(files) ? files : [files];
+      for (const file of fileArray) {
+        // 读取文件内容
+        const fileContent = await readFile(file.path);
 
-      // 调用 Rust 命令保存图片
-      const savedPath = await invoke<string>('save_image', {
-        fileData: Array.from(fileContent),
-        fileName: file.name || 'image.jpg'
-      });
+        // 调用 Rust 命令保存图片
+        const savedPath = await invoke<string>('save_image', {
+          fileData: Array.from(fileContent),
+          fileName: file.name || 'image.jpg'
+        });
 
-      // 设置预览和路径
-      selectedImagePath.value = savedPath;
+        // 创建预览 URL
+        const blob = new Blob([fileContent], { type: 'image/jpeg' });
+        const preview = URL.createObjectURL(blob);
 
-      // 创建预览 URL (从文件路径读取)
-      const blob = new Blob([fileContent], { type: 'image/jpeg' });
-      selectedImage.value = URL.createObjectURL(blob);
+        selectedImages.value.push({ path: savedPath, preview });
+      }
     }
   } catch (error) {
     console.error('Failed to select image:', error);
   }
 };
 
-// 移除图片
-const removeImage = () => {
-  if (selectedImage.value) {
-    URL.revokeObjectURL(selectedImage.value);
+// 移除单张图片
+const removeImage = (index: number) => {
+  const image = selectedImages.value[index];
+  if (image.preview) {
+    URL.revokeObjectURL(image.preview);
   }
-  selectedImage.value = null;
-  selectedImagePath.value = null;
+  selectedImages.value.splice(index, 1);
+};
+
+// 清空所有图片
+const clearImages = () => {
+  selectedImages.value.forEach(img => {
+    if (img.preview) URL.revokeObjectURL(img.preview);
+  });
+  selectedImages.value = [];
 };
 
 // 添加待办
@@ -65,11 +74,11 @@ const handleSubmit = async () => {
   try {
     await todoStore.addTodo({
       content,
-      source: selectedImage.value ? '图片上传' : '手动输入',
-      imagePath: selectedImagePath.value || undefined,
+      source: selectedImages.value.length > 0 ? '图片上传' : '手动输入',
+      imagePaths: selectedImages.value.map(img => img.path),
     });
     inputValue.value = '';
-    removeImage();
+    clearImages();
   } catch (error) {
     console.error('Failed to add todo:', error);
   } finally {
@@ -133,18 +142,16 @@ const handleDrop = async (e: DragEvent) => {
   const files = e.dataTransfer?.files;
   if (!files || files.length === 0) return;
 
-  const file = files[0];
-
-  // 检查是否为图片文件
-  if (!file.type.startsWith('image/')) {
-    alert('请拖拽图片文件');
-    return;
-  }
-
-  try {
-    await processImageFile(file);
-  } catch (error) {
-    console.error('Failed to drop image:', error);
+  // 处理多个文件
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.type.startsWith('image/')) {
+      try {
+        await processImageFile(file);
+      } catch (error) {
+        console.error('Failed to drop image:', error);
+      }
+    }
   }
 };
 
@@ -160,15 +167,11 @@ const processImageFile = async (file: File) => {
     fileName: file.name || 'image.png'
   });
 
-  // 设置预览和路径
-  selectedImagePath.value = savedPath;
-
   // 创建预览 URL
   const blob = new Blob([uint8Array], { type: file.type });
-  if (selectedImage.value) {
-    URL.revokeObjectURL(selectedImage.value);
-  }
-  selectedImage.value = URL.createObjectURL(blob);
+  const preview = URL.createObjectURL(blob);
+
+  selectedImages.value.push({ path: savedPath, preview });
 };
 
 // 组件挂载时添加粘贴事件监听
@@ -179,10 +182,10 @@ onMounted(() => {
 // 组件卸载时移除粘贴事件监听
 onUnmounted(() => {
   window.removeEventListener('paste', handlePaste);
-  // 清理预览 URL
-  if (selectedImage.value) {
-    URL.revokeObjectURL(selectedImage.value);
-  }
+  // 清理所有预览 URL
+  selectedImages.value.forEach(img => {
+    if (img.preview) URL.revokeObjectURL(img.preview);
+  });
 });
 </script>
 
@@ -200,10 +203,23 @@ onUnmounted(() => {
         📷 拖拽图片到这里上传
       </div>
     </div>
-    <!-- 图片预览区域 -->
-    <div v-if="selectedImage" class="image-preview">
-      <img :src="selectedImage" alt="预览" />
-      <button class="remove-image" @click="removeImage" title="移除图片">×</button>
+
+    <!-- 图片预览区域（横向排列） -->
+    <div v-if="selectedImages.length > 0" class="images-preview-container">
+      <div class="images-preview">
+        <div
+          v-for="(image, index) in selectedImages"
+          :key="index"
+          class="image-preview-item"
+        >
+          <img :src="image.preview" alt="预览" />
+          <button
+            class="remove-image"
+            @click="removeImage(index)"
+            title="移除图片"
+          >×</button>
+        </div>
+      </div>
     </div>
 
     <div class="input-row">
@@ -241,14 +257,15 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  background: white;
-  border-bottom: 1px solid #e0e0e0;
+  background: rgba(30, 30, 40, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   transition: all 0.2s;
+  backdrop-filter: blur(10px);
 }
 
 .add-todo-form.dragging {
   border-color: #667eea;
-  background: #f0f4ff;
+  background: rgba(40, 40, 60, 0.6);
 }
 
 .drag-overlay {
@@ -277,32 +294,45 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
 
-.image-preview {
-  position: relative;
+.images-preview-container {
   width: 100%;
-  max-height: 150px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: #f5f5f5;
+  overflow-x: auto;
+  padding: 4px 0;
 }
 
-.image-preview img {
+.images-preview {
+  display: flex;
+  gap: 8px;
+  min-height: 80px;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(50, 50, 60, 0.8);
+  flex-shrink: 0;
+}
+
+.image-preview-item img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .remove-image {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
-  font-size: 20px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -324,26 +354,33 @@ onUnmounted(() => {
 .input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
+  background: rgba(50, 50, 60, 0.6);
+  color: #e0e0e0;
+}
+
+.input::placeholder {
+  color: #666;
 }
 
 .input:focus {
   border-color: #667eea;
+  background: rgba(50, 50, 60, 0.8);
 }
 
 .input:disabled {
-  background: #f5f5f5;
+  background: rgba(30, 30, 40, 0.5);
   cursor: not-allowed;
 }
 
 .image-btn {
   padding: 8px 12px;
-  background: #f0f0f0;
-  border: 1px solid #ddd;
+  background: rgba(100, 100, 120, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   font-size: 20px;
   cursor: pointer;
@@ -352,12 +389,12 @@ onUnmounted(() => {
 }
 
 .image-btn:hover:not(:disabled) {
-  background: #e0e0e0;
+  background: rgba(100, 100, 120, 0.5);
   transform: translateY(-1px);
 }
 
 .image-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 

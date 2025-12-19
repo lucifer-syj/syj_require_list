@@ -81,5 +81,39 @@ async fn init_database() -> Result<sqlx::SqlitePool, sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // 创建 todo_images 关联表
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS todo_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            todo_id INTEGER NOT NULL,
+            image_path TEXT NOT NULL,
+            order_index INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (todo_id) REFERENCES todos (id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // 创建索引优化查询性能
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_todo_images_todo_id ON todo_images(todo_id)",
+    )
+    .execute(&pool)
+    .await?;
+
+    // 迁移旧数据：将 todos.image_path 迁移到 todo_images 表
+    sqlx::query(
+        "INSERT INTO todo_images (todo_id, image_path, order_index, created_at)
+         SELECT id, image_path, 0, created_at
+         FROM todos
+         WHERE image_path IS NOT NULL
+           AND image_path != ''
+           AND id NOT IN (SELECT DISTINCT todo_id FROM todo_images)",
+    )
+    .execute(&pool)
+    .await
+    .ok(); // 忽略错误，避免重复迁移时失败
+
     Ok(pool)
 }

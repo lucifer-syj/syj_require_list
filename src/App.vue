@@ -75,20 +75,21 @@ const closeWindow = async () => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: #f5f5f5;
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 /* 标题栏样式 */
 .title-bar {
   width: 100%;
   height: 36px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: rgba(26, 26, 46, 0.5);
   display: flex;
   align-items: center;
   padding: 0 12px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   cursor: move;
   user-select: none;
+  backdrop-filter: blur(10px);
 }
 
 .title-bar-content {

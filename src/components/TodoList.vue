@@ -52,12 +52,12 @@ onMounted(() => {
 .empty {
   padding: 20px;
   text-align: center;
-  color: #999;
+  color: #888;
   font-size: 14px;
 }
 
 .error {
-  color: #ff4444;
+  color: #ff6b6b;
 }
 
 .todo-items {
@@ -66,21 +66,21 @@ onMounted(() => {
   padding: 8px;
 }
 
-/* 滚动条样式 */
+/* 滚动条样式 - 深色 */
 .todo-items::-webkit-scrollbar {
   width: 6px;
 }
 
 .todo-items::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .todo-items::-webkit-scrollbar-thumb {
-  background: #888;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
 
 .todo-items::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: rgba(255, 255, 255, 0.3);
 }
 </style>
