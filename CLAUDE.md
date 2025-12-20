@@ -16,12 +16,14 @@
 ```
 src/                    # Vue 前端
   ├── components/       # UI 组件
+  ├── composables/      # Vue composables
   ├── stores/          # Pinia 状态管理
   └── types/           # TypeScript 类型
 src-tauri/             # Rust 后端
   ├── src/
   │   ├── lib.rs       # 主逻辑和数据库初始化
-  │   └── commands.rs  # Tauri 命令 (CRUD API)
+  │   ├── commands.rs  # Tauri 命令 (CRUD API)
+  │   └── window_snap.rs  # 窗口吸附逻辑
   ├── Cargo.toml       # Rust 依赖
   └── tauri.conf.json  # Tauri 配置
 ```
@@ -36,7 +38,7 @@ src-tauri/             # Rust 后端
 
 ### 2. Tauri 2.x API 变化
 - **窗口获取**: 使用 `getCurrentWindow()` 而非直接导入
-- **拖拽**: 使用 `startDragging()` API 而非 HTML 属性
+- **拖拽**: 不使用 `startDragging()` API，而是自定义拖动实现（mousedown/mousemove/mouseup）
 - **权限**: 需要在 `tauri.conf.json` 的 `capabilities` 中显式声明
 
 ### 3. 前后端通信
@@ -55,6 +57,20 @@ src-tauri/             # Rust 后端
   - 前端调用 `read_image` 命令获取图片字节数组
   - 转换为 Blob URL 显示（避免 `convertFileSrc` 的权限问题）
 - **清理机制**: 删除待办时自动删除关联的图片文件
+
+### 5. 窗口吸附功能
+- **自定义拖动**: 使用 mousedown/mousemove/mouseup 实现，60fps 节流
+- **吸附触发**: 窗口边缘距离屏幕边缘 10px 内自动吸附
+- **吸附位置**:
+  - 左/右边缘：保持原宽度，高度等于屏幕高度
+  - 顶部边缘：保持原尺寸
+- **预览窗口**: 独立窗口（label: "preview"），拖动时显示吸附预览
+- **自动隐藏**: 吸附后立即隐藏，保留 10px 可见区域
+- **动画优化**: 150ms 动画时长，15fps 帧率，使用 easeInOutCubic 缓动
+- **鼠标交互**:
+  - 鼠标悬停在 10px 可见区域时显示窗口
+  - 鼠标离开窗口时立即隐藏
+- **防抖机制**: 吸附后 500ms 内不允许拖动，防止重复调用
 
 ## 重要文件说明
 
@@ -76,6 +92,56 @@ src-tauri/             # Rust 后端
 // - toggle_todo: 切换完成状态
 // - save_image: 保存图片到本地目录
 // - read_image: 读取图片文件返回字节数组
+```
+
+### src-tauri/src/window_snap.rs
+```rust
+// 窗口吸附功能的 Rust 实现:
+// - get_current_screen_info: 获取当前显示器信息
+// - determine_snap_edge: 判断应该吸附到哪个边缘
+// - calculate_snap_position: 计算吸附后的位置和尺寸
+// - snap_to_edge: 执行吸附操作（先设置位置，再设置尺寸）
+// - check_should_unsnap: 检查是否应该取消吸附
+```
+
+### src/types/window.ts
+```typescript
+// 窗口吸附相关的 TypeScript 类型定义:
+// - SnapEdge: 吸附边缘类型 ('left' | 'right' | 'top' | 'none')
+// - ScreenInfo: 屏幕信息
+// - WindowSize: 窗口尺寸
+// - WindowPosition: 窗口位置
+// - SnapConfig: 吸附配置
+```
+
+### src/stores/windowStore.ts
+```typescript
+// 窗口状态管理 (Pinia):
+// - isSnapped: 是否处于吸附状态
+// - snapEdge: 吸附的边缘
+// - isHidden: 是否处于隐藏状态
+// - snappedPosition: 吸附位置（用于从隐藏状态恢复）
+// - originalSize/Position: 原始尺寸和位置（用于还原）
+```
+
+### src/composables/useWindowSnap.ts
+```typescript
+// 窗口吸附功能的前端实现:
+// - getCurrentScreenInfo: 获取屏幕信息
+// - determineSnapEdge: 判断吸附边缘
+// - calculateSnapPosition: 计算吸附位置
+// - snapToEdge: 执行吸附
+// - restoreOriginalState: 还原窗口状态
+// - hideWindow: 隐藏窗口（150ms/15fps 动画）
+// - showWindow: 显示窗口（150ms/15fps 动画）
+```
+
+### src/components/SnapPreview.vue
+```vue
+// 吸附预览框组件:
+// - 半透明蓝色背景
+// - 显示吸附后的位置和尺寸
+// - 拖动时自动显示/隐藏
 ```
 
 ### src-tauri/tauri.conf.json
@@ -133,6 +199,13 @@ cargo clean
 - **缩略图不显示**: 检查字段名映射是否正确（`imagePath` vs `image_path`）
 - **convertFileSrc 失败**: 使用后端 `read_image` 命令读取图片，转换为 Blob URL
 - **图片加载慢**: 考虑添加缓存机制或懒加载
+
+### 5. 窗口吸附问题
+- **吸附后窗口超出屏幕**: Rust 端先设置位置再设置尺寸，避免尺寸改变导致位置偏移
+- **动画卡顿**: 降低帧率（15fps）和动画时长（150ms），使用 await 等待更新完成
+- **隐藏后无法触发显示**: 增加可见区域到 10px，确保鼠标容易触发
+- **重复隐藏导致闪烁**: 添加 `isHiding`/`isShowing` 标志防止重复调用
+- **编译错误 "failed to remove file"**: 旧进程未退出，使用 `taskkill /F /IM syj_require_list.exe` 终止
 
 ## 代码规范
 
@@ -260,12 +333,35 @@ CREATE TABLE todos (
 - 图片存储管理（自动保存、删除清理）
 - 支持多种图片格式（PNG, JPG, JPEG, GIF, BMP, WEBP）
 
+### 第三阶段：窗口吸附、预览、自动隐藏功能 ✅
+**窗口吸附 MVP:**
+- 拖动窗口到屏幕边缘（左/右/顶）自动吸附
+- 吸附触发距离：10px
+- 吸附后窗口尺寸：左/右边缘保持原宽度，高度等于屏幕高度；顶部边缘保持原尺寸
+- 吸附后强制置顶
+- 从吸附状态拖动到非边缘：只还原尺寸，保持当前位置
+- 自定义拖动实现（mousedown/mousemove/mouseup），60fps 节流
+- 防抖机制：吸附后 500ms 内不允许拖动
+
+**拖动预览:**
+- 拖动时显示半透明预览框（独立窗口）
+- 预览框样式：半透明蓝色背景，带边框和阴影
+- 预览框更新频率：100ms（10fps）
+- 预览框显示吸附后的位置和尺寸
+
+**自动隐藏:**
+- 吸附成功后立即自动隐藏（无延迟）
+- 隐藏时保留 10px 可见区域
+- 隐藏动画：150ms，15fps，easeInOutCubic 缓动
+- 鼠标悬停在 10px 可见区域时显示窗口
+- 显示动画：150ms，15fps
+- 鼠标离开窗口时立即隐藏（无延迟）
+- 防止重复调用：添加 `isHiding` 和 `isShowing` 标志
+
 ## 下一步计划
 
 1. **OCR 功能**: 图片文字识别
-2. **边缘吸附**: 窗口靠近屏幕边缘时自动吸附
-3. **侧边隐藏**: 窗口在屏幕边缘时自动隐藏，鼠标悬停显示
-4. **快捷键支持**: 全局快捷键唤醒窗口
-5. **主题切换**: 深色/浅色主题
+2. **快捷键支持**: 全局快捷键唤醒窗口
+3. **主题切换**: 深色/浅色主题
 
 详细计划请参考 `document/项目规划.md`

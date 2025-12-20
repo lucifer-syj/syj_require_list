@@ -1,6 +1,7 @@
 // 引入模块
 mod database;
 mod commands;
+mod window_snap;
 
 use commands::DbState;
 use std::sync::Arc;
@@ -34,7 +35,12 @@ pub fn run() {
                 commands::delete_todo,
                 commands::toggle_todo,
                 commands::save_image,
-                commands::read_image
+                commands::read_image,
+                window_snap::get_current_screen_info,
+                window_snap::determine_snap_edge,
+                window_snap::calculate_snap_position,
+                window_snap::snap_to_edge,
+                window_snap::check_should_unsnap
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
