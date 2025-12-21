@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::fs;
 use std::path::PathBuf;
 use tauri::State;
+use crate::config;
+
 
 /// 图片数据结构
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -287,15 +289,13 @@ pub async fn toggle_todo(db: State<'_, DbState>, id: i64) -> Result<(), String> 
 /// 保存图片文件到本地目录
 #[tauri::command]
 pub async fn save_image(file_data: Vec<u8>, file_name: String) -> Result<String, String> {
-    // 获取应用数据目录
-    let app_data_dir = dirs::data_local_dir()
-        .ok_or("Failed to get local data directory")?;
-
-    // 创建图片存储目录: AppData/Local/syj_require_list/images/
-    let images_dir = app_data_dir.join("syj_require_list").join("images");
+    // 从配置读取图片目录路径
+    let app_config = config::load_config().unwrap_or_else(|_| config::AppConfig::default());
+    let images_dir = PathBuf::from(app_config.images_path());
 
     fs::create_dir_all(&images_dir)
         .map_err(|e| format!("Failed to create images directory: {}", e))?;
+
 
     // 生成唯一文件名 (使用时间戳 + 随机数)
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();

@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getCurrentWindow, PhysicalPosition, PhysicalSize, Window } from '@tauri-apps/api/window'
 import TodoList from './components/TodoList.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import { useWindowStore } from './stores/windowStore'
 import {
   getCurrentScreenInfo,
@@ -36,6 +37,9 @@ const PREVIEW_UPDATE_INTERVAL = 100 // 100ms 更新一次预览框
 
 // 置顶状态（初始值与配置一致）
 const isAlwaysOnTop = ref(true)
+
+// 设置对话框显示状态
+const showSettings = ref(false)
 
 // 拖动状态
 let isDragging = false
@@ -356,6 +360,25 @@ const toggleAlwaysOnTop = async () => {
   }
 }
 
+// 最小化窗口
+const minimizeWindow = async () => {
+  try {
+    await appWindow.minimize()
+  } catch (error) {
+    console.error('Failed to minimize window:', error)
+  }
+}
+
+// 打开设置对话框
+const openSettings = () => {
+  showSettings.value = true
+}
+
+// 关闭设置对话框
+const closeSettings = () => {
+  showSettings.value = false
+}
+
 // 关闭窗口
 const closeWindow = async () => {
   try {
@@ -410,6 +433,22 @@ onBeforeUnmount(() => {
         <span class="app-title">📝 Todo List</span>
         <div class="title-bar-buttons">
           <button
+            class="minimize-btn"
+            @click.stop="minimizeWindow"
+            @mousedown.stop
+            title="最小化"
+          >
+            −
+          </button>
+          <button
+            class="settings-btn"
+            @click.stop="openSettings"
+            @mousedown.stop
+            title="设置"
+          >
+            ⚙️
+          </button>
+          <button
             class="pin-btn"
             :class="{ active: isAlwaysOnTop }"
             @click.stop="toggleAlwaysOnTop"
@@ -427,6 +466,9 @@ onBeforeUnmount(() => {
     <div class="main-content">
       <TodoList />
     </div>
+
+    <!-- 设置对话框 -->
+    <SettingsDialog :show="showSettings" @close="closeSettings" />
   </div>
 </template>
 
@@ -472,6 +514,60 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+/* 最小化按钮样式 */
+.minimize-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.minimize-btn:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.minimize-btn:active {
+  transform: scale(0.95);
+}
+
+/* 设置按钮样式 */
+.settings-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.settings-btn:hover {
+  background-color: rgba(100, 150, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.settings-btn:active {
+  transform: scale(0.95);
 }
 
 /* 图钉按钮样式 */

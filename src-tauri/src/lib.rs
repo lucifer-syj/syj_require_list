@@ -2,6 +2,9 @@
 mod database;
 mod commands;
 mod window_snap;
+mod config;
+mod migration;
+
 
 use commands::DbState;
 use std::sync::Arc;
@@ -40,7 +43,10 @@ pub fn run() {
                 window_snap::determine_snap_edge,
                 window_snap::calculate_snap_position,
                 window_snap::snap_to_edge,
-                window_snap::check_should_unsnap
+                window_snap::check_should_unsnap,
+                config::get_config,
+                config::save_config_only,
+                migration::migrate_data
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
@@ -49,19 +55,21 @@ pub fn run() {
 
 /// 初始化数据库
 async fn init_database() -> Result<sqlx::SqlitePool, sqlx::Error> {
-    // 获取应用数据目录
-    let app_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("syj_require_list");
+    // 加载配置
+    let config = config::load_config().unwrap_or_else(|_| config::AppConfig::default());
+
+    // 获取数据库路径
+    let db_path = PathBuf::from(config.database_path());
 
     // 确保目录存在
-    std::fs::create_dir_all(&app_dir).ok();
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
 
-    // 数据库文件路径
-    let db_path = app_dir.join("todos.db");
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     println!("数据库路径: {}", db_url);
+
 
     // 创建数据库连接池
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
