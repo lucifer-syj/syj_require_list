@@ -44,6 +44,20 @@
         "y": 0,
         "focusable": false,
         "dragDropEnabled": false
+      },
+      {
+        "label": "image-viewer",
+        "title": "图片查看器",
+        "width": 800,
+        "height": 600,
+        "visible": false,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "transparent": true,
+        "skipTaskbar": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -65,6 +79,9 @@
             "core:window:allow-set-always-on-top",
             "core:window:allow-show",
             "core:window:allow-hide",
+            "core:event:default",
+            "core:event:allow-listen",
+            "core:event:allow-emit",
             "dialog:allow-open",
             "dialog:allow-confirm",
             "fs:allow-read-file",
@@ -81,6 +98,24 @@
           "windows": ["preview"],
           "permissions": [
             "core:window:default"
+          ]
+        },
+        {
+          "identifier": "image-viewer-capability",
+          "windows": ["image-viewer"],
+          "permissions": [
+            "core:window:default",
+            "core:window:allow-close",
+            "core:window:allow-set-always-on-top",
+            "core:window:allow-start-dragging",
+            "core:window:allow-show",
+            "core:window:allow-hide",
+            "core:window:allow-set-focus",
+            "core:window:allow-set-size",
+            "core:window:allow-center",
+            "core:event:default",
+            "core:event:allow-listen",
+            "core:event:allow-emit"
           ]
         }
       ]

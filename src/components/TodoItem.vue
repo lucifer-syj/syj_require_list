@@ -3,16 +3,15 @@ import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useTodoStore } from '../stores/todoStore';
 import type { Todo } from '../types/todo';
 import { invoke } from '@tauri-apps/api/core';
+import { openImageViewer } from '../composables/useImageViewer';
 
 const props = defineProps<{
   todo: Todo;
 }>();
 
 const todoStore = useTodoStore();
-const showImageModal = ref(false);
 const imageSources = ref<Array<{ path: string; src: string }>>([]);
 const imageLoading = ref(false);
-const currentImageIndex = ref(0);
 const isDeleteConfirm = ref(false); // 删除确认状态
 
 // 加载多张图片
@@ -51,12 +50,10 @@ const loadImages = async () => {
 // 组件挂载时加载图片
 onMounted(() => {
   loadImages();
-  window.addEventListener('keydown', handleKeydown);
 });
 
 // 组件卸载时清理
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown);
   imageSources.value.forEach(img => {
     if (img.src) URL.revokeObjectURL(img.src);
   });
@@ -93,42 +90,12 @@ const handleDelete = async () => {
   isDeleteConfirm.value = false;
 };
 
-// 查看图片大图
-const viewImage = (index: number) => {
-  currentImageIndex.value = index;
-  showImageModal.value = true;
-};
-
-// 上一张图片
-const prevImage = () => {
-  if (currentImageIndex.value > 0) {
-    currentImageIndex.value--;
-  }
-};
-
-// 下一张图片
-const nextImage = () => {
-  if (currentImageIndex.value < imageSources.value.length - 1) {
-    currentImageIndex.value++;
-  }
-};
-
-// 关闭图片预览
-const closeModal = () => {
-  showImageModal.value = false;
-  currentImageIndex.value = 0;
-};
-
-// 键盘快捷键
-const handleKeydown = (e: KeyboardEvent) => {
-  if (!showImageModal.value) return;
-
-  if (e.key === 'ArrowLeft') {
-    prevImage();
-  } else if (e.key === 'ArrowRight') {
-    nextImage();
-  } else if (e.key === 'Escape') {
-    closeModal();
+// 查看图片大图（使用新的图片查看器窗口）
+const viewImage = async (index: number) => {
+  try {
+    await openImageViewer(imageSources.value, index);
+  } catch (error) {
+    console.error('打开图片查看器失败:', error);
   }
 };
 </script>
@@ -178,34 +145,6 @@ const handleKeydown = (e: KeyboardEvent) => {
       {{ isDeleteConfirm ? '确认?' : '×' }}
     </button>
   </div>
-
-  <!-- 图片查看弹窗（支持切换） -->
-  <Teleport to="body">
-    <div v-if="showImageModal" class="image-modal" @click="closeModal">
-      <div class="modal-content" @click.stop>
-        <img :src="imageSources[currentImageIndex].src" alt="查看大图" />
-
-        <!-- 图片切换按钮 -->
-        <button
-          v-if="imageSources.length > 1 && currentImageIndex > 0"
-          class="nav-btn prev-btn"
-          @click="prevImage"
-        >‹</button>
-        <button
-          v-if="imageSources.length > 1 && currentImageIndex < imageSources.length - 1"
-          class="nav-btn next-btn"
-          @click="nextImage"
-        >›</button>
-
-        <!-- 图片计数 -->
-        <div v-if="imageSources.length > 1" class="image-counter">
-          {{ currentImageIndex + 1 }} / {{ imageSources.length }}
-        </div>
-
-        <button class="close-modal" @click="closeModal">×</button>
-      </div>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>
@@ -351,107 +290,5 @@ const handleKeydown = (e: KeyboardEvent) => {
   50% {
     transform: scale(1.05);
   }
-}
-
-/* 图片查看弹窗样式 */
-.image-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  cursor: pointer;
-}
-
-.modal-content {
-  position: relative;
-  max-width: 90vw;
-  max-height: 90vh;
-  background: white;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: default;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.modal-content img {
-  max-width: 90vw;
-  max-height: 90vh;
-  display: block;
-  object-fit: contain;
-}
-
-.close-modal {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  border: none;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.close-modal:hover {
-  background: rgba(0, 0, 0, 0.8);
-  transform: scale(1.1);
-}
-
-/* 导航按钮 */
-.nav-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  border: none;
-  font-size: 32px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.nav-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
-  transform: translateY(-50%) scale(1.1);
-}
-
-.prev-btn {
-  left: 12px;
-}
-
-.next-btn {
-  right: 12px;
-}
-
-/* 图片计数器 */
-.image-counter {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  border-radius: 12px;
-  font-size: 14px;
 }
 </style>
