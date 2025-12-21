@@ -72,6 +72,22 @@ src-tauri/             # Rust 后端
   - 鼠标离开窗口时立即隐藏
 - **防抖机制**: 吸附后 500ms 内不允许拖动，防止重复调用
 
+### 6. 独立图片查看器窗口
+- **窗口管理策略**: 使用预配置窗口（tauri.conf.json），而非动态创建
+- **窗口生命周期**: 使用 `hide()` 而非 `close()` 关闭窗口，避免窗口被销毁
+- **窗口通信**: 使用 Tauri 事件系统（`emit`/`listen`）传递图片数据
+- **窗口尺寸**: 根据图片尺寸自动调整（最大屏幕的 80%）
+- **图片交互**:
+  - 鼠标滚轮缩放（25% - 300%），以鼠标位置为中心
+  - 鼠标左键拖动平移图片
+  - 禁用浏览器默认拖拽行为（`draggable="false"`）
+- **Transform 顺序**: 使用 `translate scale` 而非 `scale translate`，确保缩放中心点正确
+- **多图片支持**: 左右箭头切换，显示图片计数
+- **快捷键**: ESC 关闭，方向键切换，+/- 缩放，0 重置
+- **关键 API 注意事项**:
+  - `Window.getByLabel()` 返回 `Promise<Window>`，必须 `await`
+  - 从主窗口调用 `setFocus()` 需要权限，建议省略（`show()` 会自动获取焦点）
+
 ## 重要文件说明
 
 ### src-tauri/src/lib.rs
@@ -144,15 +160,47 @@ src-tauri/             # Rust 后端
 // - 拖动时自动显示/隐藏
 ```
 
+### src/types/imageViewer.ts
+```typescript
+// 图片查看器相关的 TypeScript 类型定义:
+// - ImageData: 图片数据（路径和 Blob URL）
+// - ImageViewerData: 图片查看器数据（图片列表和当前索引）
+```
+
+### src/composables/useImageViewer.ts
+```typescript
+// 图片查看器窗口管理逻辑:
+// - openImageViewer: 打开图片查看器窗口
+// - 使用 Window.getByLabel('image-viewer') 获取预配置窗口
+// - 通过事件系统发送图片数据到窗口
+// 注意: Window.getByLabel() 返回 Promise，必须 await
+```
+
+### src/components/ImageViewer.vue
+```vue
+// 图片查看器组件:
+// - 独立窗口显示，支持缩放、平移、多图切换
+// - 接收 'image-viewer-data' 事件获取图片数据
+// - 根据图片尺寸自动调整窗口大小并居中
+// - 关闭时使用 hide() 而非 close()，保持窗口可复用
+// - Transform 顺序: translate(x, y) scale(s)，确保缩放中心点正确
+// - 禁用图片默认拖拽: draggable="false" + @dragstart.prevent
+```
+
 ### src-tauri/tauri.conf.json
 ```json
 // 配置文件，包含:
 // - 窗口配置 (大小、置顶、无边框等)
+//   * main: 主窗口
+//   * preview: 吸附预览窗口 (visible: false)
+//   * image-viewer: 图片查看器窗口 (visible: false)
 // - 权限配置 (capabilities)
 //   * dialog:allow-open - 文件选择对话框
 //   * dialog:allow-confirm - 确认对话框
 //   * fs:allow-read-file - 文件读取
 //   * fs:scope - 文件访问范围限制
+//   * core:event:* - 事件系统权限（窗口间通信）
+//   * core:window:allow-set-size/center - 窗口尺寸和位置调整
 ```
 
 ## 开发常用命令
@@ -206,6 +254,22 @@ cargo clean
 - **隐藏后无法触发显示**: 增加可见区域到 10px，确保鼠标容易触发
 - **重复隐藏导致闪烁**: 添加 `isHiding`/`isShowing` 标志防止重复调用
 - **编译错误 "failed to remove file"**: 旧进程未退出，使用 `taskkill /F /IM syj_require_list.exe` 终止
+
+### 6. 图片查看器窗口问题
+- **`Window.getByLabel()` 返回 Promise**: 必须使用 `await`，否则得到的是 Promise 对象而非 Window 实例
+  ```typescript
+  // 错误
+  const window = Window.getByLabel('image-viewer');
+  await window.show(); // TypeError: window.show is not a function
+
+  // 正确
+  const window = await Window.getByLabel('image-viewer');
+  await window.show(); // 正常工作
+  ```
+- **窗口找不到（返回 null）**: 窗口可能被 `close()` 销毁，需要重启应用。解决方案：使用 `hide()` 而非 `close()`
+- **`setFocus()` 权限错误**: 从主窗口调用其他窗口的 `setFocus()` 需要权限，建议省略（`show()` 会自动获取焦点）
+- **图片缩放中心点错误**: 确保 transform 顺序为 `translate scale`，而非 `scale translate`
+- **图片拖动时被拖走**: 添加 `draggable="false"` 和 `@dragstart.prevent` 禁用浏览器默认拖拽行为
 
 ## 代码规范
 
@@ -357,6 +421,38 @@ CREATE TABLE todos (
 - 显示动画：150ms，15fps
 - 鼠标离开窗口时立即隐藏（无延迟）
 - 防止重复调用：添加 `isHiding` 和 `isShowing` 标志
+
+### 第四阶段：独立图片查看器窗口功能 ✅
+**窗口管理:**
+- 独立窗口显示图片（label: "image-viewer"）
+- 预配置窗口（tauri.conf.json），使用 `hide()`/`show()` 控制显示
+- 根据图片尺寸自动调整窗口大小（最大屏幕的 80%）
+- 窗口自动居中显示
+- 使用 Tauri 事件系统传递图片数据
+
+**图片交互:**
+- 鼠标滚轮缩放（25% - 300%）
+- 以鼠标位置为中心缩放（鼠标指向的点保持不动）
+- 鼠标左键拖动平移图片
+- 禁用浏览器默认图片拖拽行为
+- 实时显示缩放百分比
+
+**多图片支持:**
+- 左右箭头按钮切换图片
+- 显示图片计数（如 "2/5"）
+- 切换图片时自动重置缩放和平移
+
+**快捷键:**
+- ESC: 关闭窗口
+- 方向键左/右: 切换图片
+- +/-: 放大/缩小
+- 0: 重置缩放和平移
+
+**控制按钮:**
+- 关闭按钮
+- 置顶/取消置顶按钮
+- 重置缩放按钮
+- 缩放百分比显示
 
 ## 下一步计划
 
