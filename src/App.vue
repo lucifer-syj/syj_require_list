@@ -379,12 +379,25 @@ const closeSettings = () => {
   showSettings.value = false
 }
 
-// 关闭窗口
+// 关闭窗口（关闭所有窗口以退出应用）
 const closeWindow = async () => {
   try {
+    // 手动获取并关闭所有窗口
+    const previewWindow = await Window.getByLabel('preview')
+    const imageViewerWindow = await Window.getByLabel('image-viewer')
+
+    // 先关闭其他窗口
+    if (imageViewerWindow) {
+      await imageViewerWindow.close()
+    }
+    if (previewWindow) {
+      await previewWindow.close()
+    }
+
+    // 最后关闭主窗口
     await appWindow.close()
   } catch (error) {
-    console.error('Failed to close window:', error)
+    console.error('Failed to close windows:', error)
     alert(`关闭失败: ${error}`)
   }
 }
