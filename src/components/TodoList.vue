@@ -23,17 +23,17 @@ onMounted(() => {
     <!-- 错误提示 -->
     <div v-if="todoStore.error" class="error">{{ todoStore.error }}</div>
 
-    <!-- 待办列表 -->
+    <!-- 待办列表（只显示未完成且未删除的待办） -->
     <div class="todo-items">
       <TodoItem
-        v-for="todo in todoStore.todos"
+        v-for="todo in todoStore.todos.filter(t => !t.isCompleted && !t.isDeleted)"
         :key="todo.id"
         :todo="todo"
       />
     </div>
 
     <!-- 空状态 -->
-    <div v-if="!todoStore.loading && todoStore.todos.length === 0" class="empty">
+    <div v-if="!todoStore.loading && todoStore.todos.filter(t => !t.isCompleted && !t.isDeleted).length === 0" class="empty">
       暂无待办事项，点击上方添加吧！
     </div>
   </div>

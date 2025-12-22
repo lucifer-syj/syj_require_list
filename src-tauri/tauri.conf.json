@@ -58,6 +58,21 @@
         "transparent": true,
         "skipTaskbar": false,
         "dragDropEnabled": false
+      },
+      {
+        "label": "all-todos",
+        "title": "所有待办",
+        "url": "all-todos.html",
+        "width": 1024,
+        "height": 768,
+        "visible": false,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "alwaysOnTop": false,
+        "transparent": false,
+        "skipTaskbar": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -117,6 +132,24 @@
             "core:event:default",
             "core:event:allow-listen",
             "core:event:allow-emit"
+          ]
+        },
+        {
+          "identifier": "all-todos-capability",
+          "windows": ["all-todos"],
+          "permissions": [
+            "core:window:default",
+            "core:window:allow-close",
+            "core:window:allow-hide",
+            "core:window:allow-show",
+            "core:window:allow-start-dragging",
+            "core:window:allow-set-position",
+            "core:window:allow-outer-position",
+            "core:window:allow-outer-size",
+            "core:event:default",
+            "core:event:allow-listen",
+            "core:event:allow-emit",
+            "dialog:allow-confirm"
           ]
         }
       ]

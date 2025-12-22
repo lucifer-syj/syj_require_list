@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use crate::config::{self, AppConfig};
+use sqlx::SqlitePool;
 
 
 /// 迁移结果结构体
@@ -82,6 +83,24 @@ pub async fn migrate_data(
         copy_dir_recursive(&old_root, &new_root, &mut total_files)?;
     }
 
+    // 更新数据库中的图片路径
+    let new_db_path = new_root.join("todos.db");
+    let paths_updated = if new_db_path.exists() {
+        match update_image_paths(
+            &new_db_path,
+            &old_config.root_dir,
+            &new_config.root_dir,
+        ).await {
+            Ok(count) => count,
+            Err(e) => {
+                println!("警告: 更新图片路径失败: {}", e);
+                0
+            }
+        }
+    } else {
+        0
+    };
+
     // 保存新配置
     config::save_config(&new_config)?;
 
@@ -90,14 +109,15 @@ pub async fn migrate_data(
     Ok(MigrationResult {
         success: true,
         message: format!(
-            "迁移成功！已复制 {} 个文件到新目录\n\n旧目录: {}\n新目录: {}\n\n请重启应用以使用新路径。",
+            "迁移成功！\n\n已复制 {} 个文件到新目录\n已更新 {} 条图片路径记录\n\n旧目录: {}\n新目录: {}\n\n请重启应用以使用新路径。",
             total_files,
+            paths_updated,
             old_config.root_dir,
             new_config.root_dir
         ),
         database_copied: true,
         images_copied: total_files,
-        paths_updated: 0,
+        paths_updated,
     })
 }
 
@@ -139,3 +159,66 @@ fn copy_dir_recursive(src: &Path, dest: &Path, file_count: &mut i32) -> Result<(
     Ok(())
 }
 
+/// 更新数据库中的图片路径
+async fn update_image_paths(
+    db_path: &Path,
+    old_root: &str,
+    new_root: &str,
+) -> Result<i32, String> {
+    println!("开始更新数据库中的图片路径...");
+    println!("旧根目录: {}", old_root);
+    println!("新根目录: {}", new_root);
+
+    // 连接到数据库
+    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let pool = SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| format!("连接数据库失败: {}", e))?;
+
+    // 规范化路径（统一使用反斜杠）
+    let old_root_normalized = old_root.replace("/", "\\");
+    let new_root_normalized = new_root.replace("/", "\\");
+
+    // 查询所有包含图片路径的记录
+    let rows = sqlx::query!(
+        "SELECT id, image_path FROM todos WHERE image_path IS NOT NULL AND image_path != ''"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| format!("查询数据库失败: {}", e))?;
+
+    let mut updated_count = 0;
+
+    // 更新每条记录的图片路径
+    for row in rows {
+        if let Some(old_path) = row.image_path {
+            // 规范化旧路径
+            let old_path_normalized = old_path.replace("/", "\\");
+
+            // 检查路径是否以旧根目录开头
+            if old_path_normalized.starts_with(&old_root_normalized) {
+                // 替换路径前缀
+                let new_path = old_path_normalized.replace(&old_root_normalized, &new_root_normalized);
+
+                println!("更新路径: {} -> {}", old_path, new_path);
+
+                // 更新数据库
+                sqlx::query!(
+                    "UPDATE todos SET image_path = ? WHERE id = ?",
+                    new_path,
+                    row.id
+                )
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("更新记录 {} 失败: {}", row.id, e))?;
+
+                updated_count += 1;
+            }
+        }
+    }
+
+    pool.close().await;
+
+    println!("路径更新完成，共更新 {} 条记录", updated_count);
+    Ok(updated_count)
+}

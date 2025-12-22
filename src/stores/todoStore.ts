@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 import type { Todo, AddTodoInput, UpdateTodoInput } from '../types/todo';
 
 export const useTodoStore = defineStore('todo', () => {
@@ -10,11 +11,11 @@ export const useTodoStore = defineStore('todo', () => {
   const error = ref<string | null>(null);
 
   // 获取所有待办
-  async function fetchTodos() {
+  async function fetchTodos(includeDeleted: boolean = false) {
     loading.value = true;
     error.value = null;
     try {
-      const result = await invoke<Todo[]>('get_todos');
+      const result = await invoke<Todo[]>('get_todos', { includeDeleted });
       todos.value = result;
     } catch (e) {
       error.value = e as string;
@@ -56,13 +57,15 @@ export const useTodoStore = defineStore('todo', () => {
     }
   }
 
-  // 删除待办
+  // 删除待办（软删除）
   async function deleteTodo(id: number) {
     loading.value = true;
     error.value = null;
     try {
       await invoke('delete_todo', { id });
       todos.value = todos.value.filter(todo => todo.id !== id);
+      // 发送事件通知其他窗口
+      await emit('todo-deleted', { id });
     } catch (e) {
       error.value = e as string;
       console.error('Failed to delete todo:', e);
@@ -88,6 +91,42 @@ export const useTodoStore = defineStore('todo', () => {
     }
   }
 
+  // 永久删除待办（物理删除）
+  async function permanentDeleteTodo(id: number) {
+    loading.value = true;
+    error.value = null;
+    try {
+      await invoke('permanent_delete_todo', { id });
+      todos.value = todos.value.filter(todo => todo.id !== id);
+      // 发送事件通知其他窗口
+      await emit('todo-permanent-deleted', { id });
+    } catch (e) {
+      error.value = e as string;
+      console.error('Failed to permanently delete todo:', e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  // 恢复待办（从回收站恢复）
+  async function restoreTodo(id: number) {
+    loading.value = true;
+    error.value = null;
+    try {
+      await invoke('restore_todo', { id });
+      await fetchTodos(true); // 重新加载回收站数据
+      // 发送事件通知其他窗口
+      await emit('todo-restored', { id });
+    } catch (e) {
+      error.value = e as string;
+      console.error('Failed to restore todo:', e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   return {
     todos,
     loading,
@@ -97,5 +136,7 @@ export const useTodoStore = defineStore('todo', () => {
     updateTodo,
     deleteTodo,
     toggleTodo,
+    permanentDeleteTodo,
+    restoreTodo,
   };
 });

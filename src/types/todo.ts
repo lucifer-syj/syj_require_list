@@ -19,6 +19,8 @@ export interface Todo {
   finishedAt?: string;
   isCompleted: boolean;
   orderIndex?: number;
+  isDeleted: boolean;
+  deletedAt?: string;
   images?: TodoImage[];  // 新增：图片数组
 }
 

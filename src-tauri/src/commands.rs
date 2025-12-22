@@ -32,6 +32,8 @@ pub struct Todo {
     pub finished_at: Option<String>,
     pub is_completed: bool,
     pub order_index: Option<i64>,
+    pub is_deleted: bool,
+    pub deleted_at: Option<String>,
 
     // 新增：关联的图片列表（查询时动态加载）
     #[sqlx(skip)]
@@ -64,12 +66,30 @@ pub struct DbState {
 
 /// 获取所有待办事项
 #[tauri::command]
-pub async fn get_todos(db: State<'_, DbState>) -> Result<Vec<Todo>, String> {
-    // 查询所有待办,按完成状态和 ID 排序(未完成在前,完成在后)
-    let query = "SELECT id, content, source, image_path, ocr_text, created_at,
-                 expected_finish_at, finished_at, is_completed, order_index
+pub async fn get_todos(
+    db: State<'_, DbState>,
+    include_deleted: Option<bool>
+) -> Result<Vec<Todo>, String> {
+    let include_deleted = include_deleted.unwrap_or(false);
+
+    // 根据参数决定查询条件
+    let query = if include_deleted {
+        // 查询已删除的待办
+        "SELECT id, content, source, image_path, ocr_text, created_at,
+                 expected_finish_at, finished_at, is_completed, order_index,
+                 is_deleted, deleted_at
                  FROM todos
-                 ORDER BY is_completed ASC, id DESC";
+                 WHERE is_deleted = 1
+                 ORDER BY id DESC"
+    } else {
+        // 查询未删除的待办
+        "SELECT id, content, source, image_path, ocr_text, created_at,
+                 expected_finish_at, finished_at, is_completed, order_index,
+                 is_deleted, deleted_at
+                 FROM todos
+                 WHERE is_deleted = 0
+                 ORDER BY is_completed ASC, id DESC"
+    };
 
     let mut todos: Vec<Todo> = sqlx::query_as(query)
         .fetch_all(db.pool.as_ref())
@@ -172,6 +192,8 @@ pub async fn add_todo(db: State<'_, DbState>, input: AddTodoInput) -> Result<Tod
         expected_finish_at: input.expected_finish_at,
         finished_at: None,
         is_completed: false,
+        is_deleted: false,  // 新创建的待办默认未删除
+        deleted_at: None,   // 新创建的待办没有删除时间
         order_index: Some(0),
         images: Some(images),
     })
@@ -219,9 +241,26 @@ pub async fn update_todo(db: State<'_, DbState>, input: UpdateTodoInput) -> Resu
     Ok(())
 }
 
-/// 删除待办事项
+/// 删除待办事项（软删除）
 #[tauri::command]
 pub async fn delete_todo(db: State<'_, DbState>, id: i64) -> Result<(), String> {
+    // 获取当前时间
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // 软删除：更新 is_deleted 和 deleted_at 字段
+    sqlx::query("UPDATE todos SET is_deleted = 1, deleted_at = ? WHERE id = ?")
+        .bind(&now)
+        .bind(id)
+        .execute(db.pool.as_ref())
+        .await
+        .map_err(|e: sqlx::Error| e.to_string())?;
+
+    Ok(())
+}
+
+/// 永久删除待办事项（物理删除）
+#[tauri::command]
+pub async fn permanent_delete_todo(db: State<'_, DbState>, id: i64) -> Result<(), String> {
     // 1. 查询所有关联的图片路径
     let image_query = "SELECT image_path FROM todo_images WHERE todo_id = ?";
     let image_paths: Vec<(String,)> = sqlx::query_as(image_query)
@@ -254,8 +293,21 @@ pub async fn delete_todo(db: State<'_, DbState>, id: i64) -> Result<(), String> 
         }
     }
 
-    // 4. 删除数据库记录（外键约束会自动删除 todo_images 记录）
+    // 4. 物理删除数据库记录（外键约束会自动删除 todo_images 记录）
     sqlx::query("DELETE FROM todos WHERE id = ?")
+        .bind(id)
+        .execute(db.pool.as_ref())
+        .await
+        .map_err(|e: sqlx::Error| e.to_string())?;
+
+    Ok(())
+}
+
+/// 恢复待办事项（从回收站恢复）
+#[tauri::command]
+pub async fn restore_todo(db: State<'_, DbState>, id: i64) -> Result<(), String> {
+    // 恢复待办：清除 is_deleted 和 deleted_at 字段
+    sqlx::query("UPDATE todos SET is_deleted = 0, deleted_at = NULL WHERE id = ?")
         .bind(id)
         .execute(db.pool.as_ref())
         .await

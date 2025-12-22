@@ -9,6 +9,7 @@ mod migration;
 use commands::DbState;
 use std::sync::Arc;
 use std::path::PathBuf;
+use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -36,6 +37,8 @@ pub fn run() {
                 commands::add_todo,
                 commands::update_todo,
                 commands::delete_todo,
+                commands::permanent_delete_todo,
+                commands::restore_todo,
                 commands::toggle_todo,
                 commands::save_image,
                 commands::read_image,
@@ -48,6 +51,14 @@ pub fn run() {
                 config::save_config_only,
                 migration::migrate_data
             ])
+            .on_window_event(|window, event| {
+                // 当主窗口关闭时，退出整个应用
+                if window.label() == "main" {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        window.app_handle().exit(0);
+                    }
+                }
+            })
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
     });
@@ -128,6 +139,30 @@ async fn init_database() -> Result<sqlx::SqlitePool, sqlx::Error> {
     .execute(&pool)
     .await
     .ok(); // 忽略错误，避免重复迁移时失败
+
+    // 添加软删除字段：is_deleted
+    sqlx::query(
+        "ALTER TABLE todos ADD COLUMN is_deleted INTEGER DEFAULT 0"
+    )
+    .execute(&pool)
+    .await
+    .ok(); // 忽略错误（字段可能已存在）
+
+    // 添加删除时间字段：deleted_at
+    sqlx::query(
+        "ALTER TABLE todos ADD COLUMN deleted_at TEXT"
+    )
+    .execute(&pool)
+    .await
+    .ok(); // 忽略错误（字段可能已存在）
+
+    // 创建索引优化软删除查询性能
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_todos_is_deleted ON todos(is_deleted)"
+    )
+    .execute(&pool)
+    .await
+    .ok();
 
     Ok(pool)
 }

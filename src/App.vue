@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getCurrentWindow, PhysicalPosition, PhysicalSize, Window } from '@tauri-apps/api/window'
+import { listen } from '@tauri-apps/api/event'
 import TodoList from './components/TodoList.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useWindowStore } from './stores/windowStore'
+import { useTodoStore } from './stores/todoStore'
 import {
   getCurrentScreenInfo,
   determineSnapEdge,
@@ -18,6 +20,12 @@ import type { SnapEdge } from './types/window'
 // 获取当前窗口实例
 const appWindow = getCurrentWindow()
 const windowStore = useWindowStore()
+const todoStore = useTodoStore()
+
+// 事件监听器清理函数
+let unlistenDeleted: (() => void) | null = null
+let unlistenRestored: (() => void) | null = null
+let unlistenPermanentDeleted: (() => void) | null = null
 
 // 获取预览窗口实例
 let previewWindow: Window | null = null
@@ -402,6 +410,18 @@ const closeWindow = async () => {
   }
 }
 
+// 打开"所有待办"窗口
+const openAllTodosWindow = async () => {
+  try {
+    const allTodosWindow = await Window.getByLabel('all-todos')
+    if (allTodosWindow) {
+      await allTodosWindow.show()
+    }
+  } catch (error) {
+    console.error('Failed to open all todos window:', error)
+  }
+}
+
 /**
  * 鼠标进入窗口时的处理
  */
@@ -427,14 +447,35 @@ const onMouseLeave = async () => {
 }
 
 // 初始化
-onMounted(() => {
+onMounted(async () => {
   console.log('=== 应用初始化 ===')
+
+  // 监听数据变更事件，实现窗口间同步
+  unlistenDeleted = await listen('todo-deleted', async () => {
+    console.log('收到 todo-deleted 事件，重新加载待办列表')
+    await todoStore.fetchTodos()
+  })
+
+  unlistenRestored = await listen('todo-restored', async () => {
+    console.log('收到 todo-restored 事件，重新加载待办列表')
+    await todoStore.fetchTodos()
+  })
+
+  unlistenPermanentDeleted = await listen('todo-permanent-deleted', async () => {
+    console.log('收到 todo-permanent-deleted 事件，重新加载待办列表')
+    await todoStore.fetchTodos()
+  })
 })
 
 // 清理
 onBeforeUnmount(() => {
   // 清除自动隐藏定时器
   cancelAutoHideTimer()
+
+  // 清理事件监听器
+  if (unlistenDeleted) unlistenDeleted()
+  if (unlistenRestored) unlistenRestored()
+  if (unlistenPermanentDeleted) unlistenPermanentDeleted()
 })
 </script>
 
@@ -478,6 +519,9 @@ onBeforeUnmount(() => {
     <!-- 主内容区域 -->
     <div class="main-content">
       <TodoList />
+      <button class="view-all-btn" @click="openAllTodosWindow">
+        查看所有
+      </button>
     </div>
 
     <!-- 设置对话框 -->
@@ -649,6 +693,29 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* 查看所有按钮 */
+.view-all-btn {
+  width: 100%;
+  height: 40px;
+  background-color: rgba(100, 150, 255, 0.3);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+
+.view-all-btn:hover {
+  background-color: rgba(100, 150, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.view-all-btn:active {
+  transform: translateY(0);
 }
 </style>
 
