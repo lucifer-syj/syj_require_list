@@ -32,6 +32,8 @@ export const useTodoStore = defineStore('todo', () => {
     try {
       const newTodo = await invoke<Todo>('add_todo', { input });
       todos.value.unshift(newTodo);
+      // 发送事件通知其他窗口
+      await emit('todo-added', { id: newTodo.id });
     } catch (e) {
       error.value = e as string;
       console.error('Failed to add todo:', e);
@@ -48,6 +50,8 @@ export const useTodoStore = defineStore('todo', () => {
     try {
       await invoke('update_todo', { input });
       await fetchTodos();
+      // 发送事件通知其他窗口
+      await emit('todo-updated', { id: input.id });
     } catch (e) {
       error.value = e as string;
       console.error('Failed to update todo:', e);
@@ -82,6 +86,8 @@ export const useTodoStore = defineStore('todo', () => {
     try {
       await invoke('toggle_todo', { id });
       await fetchTodos();
+      // 发送事件通知其他窗口
+      await emit('todo-toggled', { id });
     } catch (e) {
       error.value = e as string;
       console.error('Failed to toggle todo:', e);

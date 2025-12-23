@@ -154,6 +154,16 @@ const switchTab = (tab: 'list' | 'trash') => {
   // 不需要重新加载数据，因为所有数据已经加载了
 };
 
+// 切换完成状态
+const handleToggle = async (id: number) => {
+  try {
+    await todoStore.toggleTodo(id);
+    await loadData(); // 重新加载所有数据
+  } catch (error) {
+    console.error('切换状态失败:', error);
+  }
+};
+
 // 恢复待办
 const handleRestore = async (id: number) => {
   try {
@@ -203,6 +213,9 @@ const closeWindow = async () => {
 };
 
 // 监听事件
+let unlistenAdded: (() => void) | null = null;
+let unlistenToggled: (() => void) | null = null;
+let unlistenUpdated: (() => void) | null = null;
 let unlistenDeleted: (() => void) | null = null;
 let unlistenRestored: (() => void) | null = null;
 let unlistenPermanentDeleted: (() => void) | null = null;
@@ -221,6 +234,18 @@ onMounted(async () => {
   });
 
   // 监听数据变更事件
+  unlistenAdded = await listen('todo-added', async () => {
+    await loadData();
+  });
+
+  unlistenToggled = await listen('todo-toggled', async () => {
+    await loadData();
+  });
+
+  unlistenUpdated = await listen('todo-updated', async () => {
+    await loadData();
+  });
+
   unlistenDeleted = await listen('todo-deleted', async () => {
     await loadData();
   });
@@ -235,6 +260,9 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (unlistenAdded) unlistenAdded();
+  if (unlistenToggled) unlistenToggled();
+  if (unlistenUpdated) unlistenUpdated();
   if (unlistenDeleted) unlistenDeleted();
   if (unlistenRestored) unlistenRestored();
   if (unlistenPermanentDeleted) unlistenPermanentDeleted();
@@ -294,12 +322,12 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- 该日期下的待办列表 -->
-            <div v-for="todo in group.todos" :key="todo.id" class="todo-item">
+            <div v-for="todo in group.todos" :key="todo.id" class="todo-item" :class="{ completed: todo.isCompleted }">
               <div class="todo-header">
                 <input
                   type="checkbox"
                   :checked="todo.isCompleted"
-                  @change="todoStore.toggleTodo(todo.id!)"
+                  @change="handleToggle(todo.id!)"
                   class="checkbox"
                 />
                 <span :class="['todo-content', { completed: todo.isCompleted }]">
@@ -514,10 +542,19 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
 }
 
+.todo-item.completed {
+  background: rgba(100, 100, 100, 0.15);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
 .todo-item:hover,
 .trash-item:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+.todo-item.completed:hover {
+  background: rgba(100, 100, 100, 0.2);
 }
 
 .todo-header {
