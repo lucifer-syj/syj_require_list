@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getCurrentWindow, PhysicalPosition, PhysicalSize, Window } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import TodoList from './components/TodoList.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useWindowStore } from './stores/windowStore'
@@ -15,7 +16,9 @@ import {
   hideWindow,
   showWindow
 } from './composables/useWindowSnap'
+import { openAllTodos } from './composables/useAllTodos'
 import type { SnapEdge } from './types/window'
+import type { AppConfig } from './types/config'
 
 // 获取当前窗口实例
 const appWindow = getCurrentWindow()
@@ -26,6 +29,12 @@ const todoStore = useTodoStore()
 let unlistenDeleted: (() => void) | null = null
 let unlistenRestored: (() => void) | null = null
 let unlistenPermanentDeleted: (() => void) | null = null
+let unlistenResize: (() => void) | null = null
+
+// 窗口尺寸记忆
+let currentSize: { width: number; height: number } | null = null
+const MIN_WIDTH = 300
+const MIN_HEIGHT = 400
 
 // 获取预览窗口实例
 let previewWindow: Window | null = null
@@ -390,6 +399,24 @@ const closeSettings = () => {
 // 关闭窗口（关闭所有窗口以退出应用）
 const closeWindow = async () => {
   try {
+    // 保存主窗口尺寸（只在非吸附状态下保存）
+    if (!windowStore.isSnapped) {
+      try {
+        // 如果 currentSize 为 null，主动获取当前尺寸
+        if (!currentSize) {
+          const size = await appWindow.outerSize()
+          currentSize = { width: size.width, height: size.height }
+        }
+
+        const config = await invoke<AppConfig>('get_config')
+        config.mainWindow = currentSize
+        await invoke('save_config_only', { config })
+        console.log('保存主窗口尺寸:', currentSize)
+      } catch (error) {
+        console.error('保存主窗口尺寸失败:', error)
+      }
+    }
+
     // 手动获取并关闭所有窗口
     const previewWindow = await Window.getByLabel('preview')
     const imageViewerWindow = await Window.getByLabel('image-viewer')
@@ -413,10 +440,7 @@ const closeWindow = async () => {
 // 打开"所有待办"窗口
 const openAllTodosWindow = async () => {
   try {
-    const allTodosWindow = await Window.getByLabel('all-todos')
-    if (allTodosWindow) {
-      await allTodosWindow.show()
-    }
+    await openAllTodos()
   } catch (error) {
     console.error('Failed to open all todos window:', error)
   }
@@ -450,6 +474,29 @@ const onMouseLeave = async () => {
 onMounted(async () => {
   console.log('=== 应用初始化 ===')
 
+  // 加载配置并应用保存的窗口尺寸
+  try {
+    const config = await invoke<AppConfig>('get_config')
+    if (config.mainWindow) {
+      const width = Math.max(config.mainWindow.width, MIN_WIDTH)
+      const height = Math.max(config.mainWindow.height, MIN_HEIGHT)
+      console.log('应用保存的窗口尺寸:', { width, height })
+      await appWindow.setSize(new PhysicalSize(width, height))
+      currentSize = { width, height }
+    }
+  } catch (error) {
+    console.error('加载窗口配置失败:', error)
+  }
+
+  // 监听窗口尺寸变化（只在非吸附状态下记录）
+  unlistenResize = await appWindow.onResized((event) => {
+    if (!windowStore.isSnapped) {
+      // 从事件对象中获取尺寸
+      currentSize = { width: event.payload.width, height: event.payload.height }
+      console.log('窗口尺寸变化（非吸附状态）:', currentSize)
+    }
+  })
+
   // 监听数据变更事件，实现窗口间同步
   unlistenDeleted = await listen('todo-deleted', async () => {
     console.log('收到 todo-deleted 事件，重新加载待办列表')
@@ -468,7 +515,19 @@ onMounted(async () => {
 })
 
 // 清理
-onBeforeUnmount(() => {
+onBeforeUnmount(async () => {
+  // 保存窗口尺寸（只在非吸附状态下保存）
+  if (!windowStore.isSnapped && currentSize) {
+    try {
+      const config = await invoke<AppConfig>('get_config')
+      config.mainWindow = currentSize
+      await invoke('save_config_only', { config })
+      console.log('保存主窗口尺寸:', currentSize)
+    } catch (error) {
+      console.error('保存窗口尺寸失败:', error)
+    }
+  }
+
   // 清除自动隐藏定时器
   cancelAutoHideTimer()
 
@@ -476,6 +535,7 @@ onBeforeUnmount(() => {
   if (unlistenDeleted) unlistenDeleted()
   if (unlistenRestored) unlistenRestored()
   if (unlistenPermanentDeleted) unlistenPermanentDeleted()
+  if (unlistenResize) unlistenResize()
 })
 </script>
 

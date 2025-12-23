@@ -2,7 +2,9 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import type { ImageData, ImageViewerData } from '../types/imageViewer';
+import type { AppConfig } from '../types/config';
 
 // 获取当前窗口实例
 const appWindow = getCurrentWindow();
@@ -25,28 +27,26 @@ let startY = 0;
 
 // 监听图片数据事件
 let unlisten: (() => void) | null = null;
+let unlistenResize: (() => void) | null = null;
+
+// 窗口尺寸记忆
+let currentSize: { width: number; height: number } | null = null;
+const MIN_WIDTH = 600;
+const MIN_HEIGHT = 400;
 
 onMounted(async () => {
+  // 监听窗口尺寸变化
+  unlistenResize = await appWindow.onResized((event) => {
+    currentSize = { width: event.payload.width, height: event.payload.height };
+    console.log('图片查看器尺寸变化:', currentSize);
+  });
+
   // 监听图片数据事件
   unlisten = await listen<ImageViewerData>('image-viewer-data', async (event) => {
     console.log('收到图片数据:', event.payload);
     images.value = event.payload.images;
     currentIndex.value = event.payload.currentIndex;
     resetTransform();
-
-    // 根据图片尺寸调整窗口大小并居中
-    if (images.value.length > 0 && images.value[currentIndex.value]) {
-      try {
-        const img = await getImageDimensions(images.value[currentIndex.value].src);
-        const windowSize = calculateWindowSize(img.width, img.height);
-        console.log('调整窗口尺寸:', windowSize);
-
-        await appWindow.setSize({ width: windowSize.width, height: windowSize.height });
-        await appWindow.center();
-      } catch (error) {
-        console.warn('无法调整窗口尺寸:', error);
-      }
-    }
   });
 
   // 监听键盘事件
@@ -58,6 +58,9 @@ onBeforeUnmount(() => {
   if (unlisten) {
     unlisten();
   }
+  if (unlistenResize) {
+    unlistenResize();
+  }
   window.removeEventListener('keydown', handleKeydown);
   // 清理 Blob URL
   images.value.forEach(img => {
@@ -68,6 +71,18 @@ onBeforeUnmount(() => {
 // 关闭窗口（实际上是隐藏，不销毁）
 const closeWindow = async () => {
   try {
+    // 保存窗口尺寸
+    if (currentSize) {
+      try {
+        const config = await invoke<AppConfig>('get_config');
+        config.imageViewerWindow = currentSize;
+        await invoke('save_config_only', { config });
+        console.log('保存图片查看器尺寸:', currentSize);
+      } catch (error) {
+        console.error('保存图片查看器尺寸失败:', error);
+      }
+    }
+
     await appWindow.hide();
   } catch (error) {
     console.error('隐藏窗口失败:', error);
@@ -99,46 +114,6 @@ const startDrag = async (e: MouseEvent) => {
 const currentImage = () => {
   if (images.value.length === 0) return null;
   return images.value[currentIndex.value];
-};
-
-// 根据图片尺寸计算窗口大小
-const calculateWindowSize = (imageWidth: number, imageHeight: number): { width: number; height: number } => {
-  const screenWidth = window.screen.width;
-  const screenHeight = window.screen.height;
-  const maxWidth = screenWidth * 0.8;
-  const maxHeight = screenHeight * 0.8;
-
-  let width = imageWidth;
-  let height = imageHeight;
-
-  if (width > maxWidth || height > maxHeight) {
-    const ratio = Math.min(maxWidth / width, maxHeight / height);
-    width = Math.floor(width * ratio);
-    height = Math.floor(height * ratio);
-  }
-
-  // 最小尺寸限制
-  width = Math.max(400, width);
-  height = Math.max(300, height);
-
-  // 添加标题栏和控制按钮的高度（约 80px）
-  height = height + 80;
-
-  return { width, height };
-};
-
-// 获取图片尺寸
-const getImageDimensions = async (src: string): Promise<{ width: number; height: number }> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    };
-    img.onerror = () => {
-      reject(new Error('Failed to load image'));
-    };
-    img.src = src;
-  });
 };
 
 // 计算缩放比例显示
@@ -452,8 +427,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 .image-wrapper img {
-  max-width: none;
-  max-height: none;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   user-select: none;
   transition: transform 0.1s ease-out;

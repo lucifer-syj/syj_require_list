@@ -2,11 +2,25 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// 窗口尺寸配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowSizeConfig {
+    pub width: u32,
+    pub height: u32,
+}
+
 /// 应用配置结构体
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub root_dir: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main_window: Option<WindowSizeConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_viewer_window: Option<WindowSizeConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub all_todos_window: Option<WindowSizeConfig>,
 }
 
 impl Default for AppConfig {
@@ -18,7 +32,12 @@ impl Default for AppConfig {
             .to_string_lossy()
             .to_string();
 
-        Self { root_dir }
+        Self {
+            root_dir,
+            main_window: None,
+            image_viewer_window: None,
+            all_todos_window: None,
+        }
     }
 }
 

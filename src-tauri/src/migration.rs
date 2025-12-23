@@ -180,7 +180,7 @@ async fn update_image_paths(
     let new_root_normalized = new_root.replace("/", "\\");
 
     // 查询所有包含图片路径的记录
-    let rows = sqlx::query!(
+    let rows = sqlx::query_as::<_, (i64, String)>(
         "SELECT id, image_path FROM todos WHERE image_path IS NOT NULL AND image_path != ''"
     )
     .fetch_all(&pool)
@@ -190,30 +190,28 @@ async fn update_image_paths(
     let mut updated_count = 0;
 
     // 更新每条记录的图片路径
-    for row in rows {
-        if let Some(old_path) = row.image_path {
-            // 规范化旧路径
-            let old_path_normalized = old_path.replace("/", "\\");
+    for (id, old_path) in rows {
+        // 规范化旧路径
+        let old_path_normalized = old_path.replace("/", "\\");
 
-            // 检查路径是否以旧根目录开头
-            if old_path_normalized.starts_with(&old_root_normalized) {
-                // 替换路径前缀
-                let new_path = old_path_normalized.replace(&old_root_normalized, &new_root_normalized);
+        // 检查路径是否以旧根目录开头
+        if old_path_normalized.starts_with(&old_root_normalized) {
+            // 替换路径前缀
+            let new_path = old_path_normalized.replace(&old_root_normalized, &new_root_normalized);
 
-                println!("更新路径: {} -> {}", old_path, new_path);
+            println!("更新路径: {} -> {}", old_path, new_path);
 
-                // 更新数据库
-                sqlx::query!(
-                    "UPDATE todos SET image_path = ? WHERE id = ?",
-                    new_path,
-                    row.id
-                )
-                .execute(&pool)
-                .await
-                .map_err(|e| format!("更新记录 {} 失败: {}", row.id, e))?;
+            // 更新数据库
+            sqlx::query(
+                "UPDATE todos SET image_path = ? WHERE id = ?"
+            )
+            .bind(&new_path)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("更新记录 {} 失败: {}", id, e))?;
 
-                updated_count += 1;
-            }
+            updated_count += 1;
         }
     }
 

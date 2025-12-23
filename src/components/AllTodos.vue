@@ -7,6 +7,7 @@ import { useTodoStore } from '../stores/todoStore';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { openImageViewer } from '../composables/useImageViewer';
 import type { Todo } from '../types/todo';
+import type { AppConfig } from '../types/config';
 
 const appWindow = getCurrentWindow();
 const todoStore = useTodoStore();
@@ -182,6 +183,22 @@ const handlePermanentDelete = async (id: number) => {
 
 // 关闭窗口
 const closeWindow = async () => {
+  // 保存窗口尺寸
+  try {
+    // 如果 currentSize 为 null，主动获取当前尺寸
+    if (!currentSize) {
+      const size = await appWindow.outerSize();
+      currentSize = { width: size.width, height: size.height };
+    }
+
+    const config = await invoke<AppConfig>('get_config');
+    config.allTodosWindow = currentSize;
+    await invoke('save_config_only', { config });
+    console.log('保存全部待办窗口尺寸:', currentSize);
+  } catch (error) {
+    console.error('保存全部待办窗口尺寸失败:', error);
+  }
+
   await appWindow.hide();
 };
 
@@ -189,9 +206,21 @@ const closeWindow = async () => {
 let unlistenDeleted: (() => void) | null = null;
 let unlistenRestored: (() => void) | null = null;
 let unlistenPermanentDeleted: (() => void) | null = null;
+let unlistenResize: (() => void) | null = null;
+
+// 窗口尺寸记忆
+let currentSize: { width: number; height: number } | null = null;
+const MIN_WIDTH = 600;
+const MIN_HEIGHT = 400;
 
 onMounted(async () => {
   await loadData();
+
+  // 监听窗口尺寸变化
+  unlistenResize = await appWindow.onResized((event) => {
+    currentSize = { width: event.payload.width, height: event.payload.height };
+    console.log('全部待办窗口尺寸变化:', currentSize);
+  });
 
   // 监听数据变更事件
   unlistenDeleted = await listen('todo-deleted', async () => {
@@ -211,6 +240,7 @@ onBeforeUnmount(() => {
   if (unlistenDeleted) unlistenDeleted();
   if (unlistenRestored) unlistenRestored();
   if (unlistenPermanentDeleted) unlistenPermanentDeleted();
+  if (unlistenResize) unlistenResize();
 
   // 清理所有 Blob URLs
   imageCache.value.forEach(images => {

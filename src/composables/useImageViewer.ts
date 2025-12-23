@@ -1,50 +1,11 @@
-import { Window } from '@tauri-apps/api/window';
+import { Window, PhysicalSize } from '@tauri-apps/api/window';
 import { emit } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import type { ImageData } from '../types/imageViewer';
+import type { AppConfig } from '../types/config';
 
-/**
- * 根据图片尺寸计算窗口大小
- */
-function calculateWindowSize(imageWidth: number, imageHeight: number): { width: number; height: number } {
-  const screenWidth = window.screen.width;
-  const screenHeight = window.screen.height;
-  const maxWidth = screenWidth * 0.8;
-  const maxHeight = screenHeight * 0.8;
-
-  let width = imageWidth;
-  let height = imageHeight;
-
-  if (width > maxWidth || height > maxHeight) {
-    const ratio = Math.min(maxWidth / width, maxHeight / height);
-    width = Math.floor(width * ratio);
-    height = Math.floor(height * ratio);
-  }
-
-  // 最小尺寸限制
-  width = Math.max(400, width);
-  height = Math.max(300, height);
-
-  // 添加标题栏和控制按钮的高度（约 80px）
-  height = height + 80;
-
-  return { width, height };
-}
-
-/**
- * 获取图片尺寸
- */
-async function getImageDimensions(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    };
-    img.onerror = () => {
-      reject(new Error('Failed to load image'));
-    };
-    img.src = src;
-  });
-}
+const MIN_WIDTH = 600;
+const MIN_HEIGHT = 400;
 
 /**
  * 打开图片查看器窗口
@@ -63,7 +24,20 @@ export async function openImageViewer(images: ImageData[], currentIndex: number)
 
     console.log('找到图片查看器窗口');
 
-    // 显示窗口（尺寸调整将在 ImageViewer.vue 内部完成）
+    // 加载配置并应用保存的窗口尺寸
+    try {
+      const config = await invoke<AppConfig>('get_config');
+      if (config.imageViewerWindow) {
+        const width = Math.max(config.imageViewerWindow.width, MIN_WIDTH);
+        const height = Math.max(config.imageViewerWindow.height, MIN_HEIGHT);
+        console.log('应用保存的图片查看器尺寸:', { width, height });
+        await imageViewerWindow.setSize(new PhysicalSize(width, height));
+      }
+    } catch (error) {
+      console.error('加载图片查看器配置失败:', error);
+    }
+
+    // 显示窗口
     console.log('显示窗口');
     await imageViewerWindow.show();
 
