@@ -41,7 +41,7 @@ let previewWindow: Window | null = null
 const getPreviewWindow = async () => {
   if (!previewWindow) {
     const { Window } = await import('@tauri-apps/api/window')
-    previewWindow = Window.getByLabel('preview')
+    previewWindow = await Window.getByLabel('preview')
   }
   return previewWindow
 }
@@ -76,21 +76,6 @@ const SNAP_COOLDOWN = 500 // 吸附后500ms内不允许拖动
 
 // 自动隐藏定时器
 let autoHideTimer: number | null = null
-const AUTO_HIDE_DELAY = 1000 // 吸附后1秒自动隐藏
-
-/**
- * 启动自动隐藏定时器
- */
-const startAutoHideTimer = () => {
-  // 清除已有的定时器
-  cancelAutoHideTimer()
-
-  console.log('启动自动隐藏定时器，1秒后隐藏窗口')
-  autoHideTimer = window.setTimeout(async () => {
-    console.log('自动隐藏定时器触发')
-    await hideWindow()
-  }, AUTO_HIDE_DELAY)
-}
 
 /**
  * 取消自动隐藏定时器
@@ -192,7 +177,7 @@ const onMouseMove = (e: MouseEvent) => {
 }
 
 // 鼠标松开时执行边缘检测
-const onMouseUp = async (e: MouseEvent) => {
+const onMouseUp = async () => {
   console.log('>>> 鼠标松开')
   isDragging = false
 

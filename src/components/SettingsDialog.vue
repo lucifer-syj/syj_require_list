@@ -5,7 +5,7 @@ import { useConfigStore } from '../stores/configStore'
 import type { AppConfig } from '../types/config'
 
 // Props
-const props = defineProps<{
+defineProps<{
   show: boolean
 }>()
 

@@ -24,14 +24,17 @@ const selectImage = async () => {
 
     if (files) {
       const fileArray = Array.isArray(files) ? files : [files];
-      for (const file of fileArray) {
+      for (const filePath of fileArray) {
         // 读取文件内容
-        const fileContent = await readFile(file.path);
+        const fileContent = await readFile(filePath);
+
+        // 从路径中提取文件名
+        const fileName = filePath.split(/[/\\]/).pop() || 'image.jpg';
 
         // 调用 Rust 命令保存图片
         const savedPath = await invoke<string>('save_image', {
           fileData: Array.from(fileContent),
-          fileName: file.name || 'image.jpg'
+          fileName: fileName
         });
 
         // 创建预览 URL

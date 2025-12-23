@@ -1,0 +1,27 @@
+# SYJ Todo List 便携版
+
+## 使用说明
+
+1. 直接双击 syj_require_list.exe 运行
+2. 所有数据（数据库、图片、配置）都保存在 data 文件夹中
+3. 可以将整个文件夹复制到其他电脑使用
+
+## 首次运行
+
+首次运行时，如果提示缺少 WebView2，请：
+- 下载并安装 WebView2 运行时
+
+## 文件夹结构
+
+portable-release/
+├── syj_require_list.exe    # 程序主文件
+├── data/                   # 数据目录
+│   ├── todos.db           # 数据库文件
+└── 使用说明.txt            # 本文件
+
+## 注意事项
+
+- 请勿删除 portable.txt 文件，否则程序会使用系统 AppData 目录
+- data 文件夹包含所有用户数据，请定期备份
+
+版本: 0.1.0

@@ -210,8 +210,6 @@ let unlistenResize: (() => void) | null = null;
 
 // 窗口尺寸记忆
 let currentSize: { width: number; height: number } | null = null;
-const MIN_WIDTH = 600;
-const MIN_HEIGHT = 400;
 
 onMounted(async () => {
   await loadData();

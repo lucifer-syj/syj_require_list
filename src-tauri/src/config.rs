@@ -25,12 +25,8 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        // 获取默认根目录
-        let root_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("syj_require_list")
-            .to_string_lossy()
-            .to_string();
+        // 优先使用程序目录（便携版模式）
+        let root_dir = get_default_root_dir();
 
         Self {
             root_dir,
@@ -59,13 +55,31 @@ impl AppConfig {
     }
 }
 
+/// 获取默认根目录（便携版优先）
+fn get_default_root_dir() -> String {
+    // 尝试获取程序所在目录
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let portable_dir = exe_dir.join("data");
+            // 如果程序目录下存在 data 文件夹或 portable.txt 标记文件，使用便携模式
+            if portable_dir.exists() || exe_dir.join("portable.txt").exists() {
+                return portable_dir.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // 否则使用 AppData 目录（传统模式）
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("syj_require_list")
+        .to_string_lossy()
+        .to_string()
+}
+
 /// 获取配置文件路径
 fn get_config_file_path() -> PathBuf {
-    let app_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("syj_require_list");
-
-    app_dir.join("config.json")
+    let root_dir = get_default_root_dir();
+    PathBuf::from(root_dir).join("config.json")
 }
 
 /// 加载配置文件
